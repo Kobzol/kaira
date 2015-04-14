@@ -25,6 +25,11 @@ def options(ctx):
                    default=False,
                    help="do not build verification subsystem")
 
+    ctx.add_option("--disable-clang",
+                   action="store_true",
+                   default=False,
+                   help="do not build clang support")
+
     ctx.add_option("--disable-doc",
                    action="store_true",
                    default=False,
@@ -34,7 +39,12 @@ def options(ctx):
                     action="store",
                     default="")
 
+    ctx.add_option("--clang-path",
+                    action="store",
+                    default=None)
+
     ctx.load("compiler_cxx")
+    ctx.load("python")
 
 
 def configure(ctx):
@@ -42,6 +52,8 @@ def configure(ctx):
         ctx.load("icpc")
     else:
         ctx.load("g++")
+    ctx.load("python")
+    ctx.check_python_version((2,7,0))
 
     compiler_prefix = ctx.options.compiler_prefix.split()
     if compiler_prefix:
@@ -85,10 +97,10 @@ def configure(ctx):
         # -------------- MPI ENV ----------------
         ctx.setenv("mpi", ctx.env.derive())
         if ctx.env.MPICXX:
-            ctx.env.CXX = [ ctx.env.MPICXX ]
+            ctx.env.CXX = list(ctx.env.MPICXX)
             mpi=True
         elif ctx.env.MPICC:
-            ctx.env.CXX = [ ctx.env.MPICC ]
+            ctx.env.CXX = list(ctx.env.MPICC)
             ctx.env.append_value("STLIB", "-lstdc++")
             mpi=True
         else:
@@ -106,6 +118,29 @@ def configure(ctx):
                     "MPI support is disabled, because "
                     "no MPI implementation was found.")
 
+    if not ctx.options.disable_clang:
+        if ctx.options.clang_path:
+            libclang = ctx.root.find_node(ctx.options.clang_path)
+            if libclang is None:
+                 ctx.fatal("%s not found" % ctx.options.clang_path)
+        else:
+            tmp = ctx.root.ant_glob("usr/lib/**/libclang.so*", dir=True, maxdepth=3)
+            if not tmp:
+                    ctx.fatal("libclang.so not found.\n"
+                              "Use --disable-clang to disable code complete functions, or "
+                              "--clang-path=PATH to specify the path.")
+            libclang = tmp[0]
+        ctx.msg("libclang", libclang.abspath())
+    else:
+        libclang = None
+
+    # --------- run_python -------------
+
+    run_python = ctx.bldnode.make_node("run_python")
+    run_python.write("#!/bin/sh\n")
+    run_python.write("exec " + ctx.env.PYTHON[0] + " $@\n")
+
+    # --------- config.ini -----------
     conffile = ctx.bldnode.make_node("config.ini")
     conffile.parent.mkdir()
     myconf = []
@@ -113,19 +148,25 @@ def configure(ctx):
     myconf.append("VERSION: " + VERSION)
     myconf.append("CXX: " + " ".join(ctx.env.CXX))
     myconf.append("OCTAVE: " + str(bool(ctx.env.MKOCTFILE)))
+    myconf.append("PYTHON: " + ctx.env.PYTHON[0])
+    myconf.append("LIBCLANG: " + str(bool(libclang)))
+
     if mpi:
         myconf.append("MPICXX: " + " ".join(ctx.all_envs["mpi"].CXX))
     if ctx.env.MKOCTFILE:
         myconf.append("[Octave]")
-        incflags = ctx.cmd_and_log([ctx.env.MKOCTFILE, "--print", "INCFLAGS" ],
+        incflags = ctx.cmd_and_log([ctx.env.MKOCTFILE[0], "--print", "INCFLAGS" ],
                                    output=Context.STDOUT)
-        lflags = ctx.cmd_and_log([ctx.env.MKOCTFILE, "--print", "LFLAGS" ],
+        lflags = ctx.cmd_and_log([ctx.env.MKOCTFILE[0], "--print", "LFLAGS" ],
                                    output=Context.STDOUT)
-        libs = ctx.cmd_and_log([ctx.env.MKOCTFILE, "--print", "OCTAVE_LIBS" ],
+        libs = ctx.cmd_and_log([ctx.env.MKOCTFILE[0], "--print", "OCTAVE_LIBS" ],
                                    output=Context.STDOUT)
         myconf.append("INCFLAGS: " + incflags)
         myconf.append("LFLAGS: " + lflags)
         myconf.append("LIBS: " + libs)
+    if libclang:
+        myconf.append("[libclang]")
+        myconf.append("PATH: " + libclang.abspath())
     conffile.write("\n".join(myconf))
     ctx.env.append_value('cfg_files', conffile.abspath())
 
