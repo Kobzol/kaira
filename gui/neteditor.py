@@ -34,6 +34,8 @@ import codeedit
 import objectlist
 import tracing
 import completion
+import functools
+import gobject
 
 def netname_dialog(net, mainwindow):
     builder = gtkutils.load_ui("netname-dialog")
@@ -58,7 +60,7 @@ def netname_dialog(net, mainwindow):
 
 
 class NetEditor(gtk.VBox):
-
+    netnumber = 1
     def __init__(self, app, project):
         gtk.VBox.__init__(self)
         self.project = project
@@ -73,7 +75,7 @@ class NetEditor(gtk.VBox):
         self.mode = "edit"
 
         self.pack_start(self._controls(), False)
-
+        
         paned = gtk.HPaned()
         self.pack_start(paned)
 
@@ -182,6 +184,9 @@ class NetEditor(gtk.VBox):
             self.net.changed()
 
     def _controls(self):
+        def add_radio_shortcut(accel_group, widget, key):
+            accel_group.connect_group(gtk.gdk.keyval_from_name(key), 0, gtk.ACCEL_VISIBLE, lambda a, b, c, d: widget.set_active(True))
+        
         icon_arrow = gtk.image_new_from_file(
                 os.path.join(paths.ICONS_DIR, "arrow.svg"))
         icon_transition = gtk.image_new_from_file(
@@ -204,59 +209,78 @@ class NetEditor(gtk.VBox):
         button1 = gtk.RadioToolButton(None)
         button1.connect("toggled", lambda w: self.set_mode("edit"))
         button1.set_stock_id(gtk.STOCK_EDIT)
+        button1.set_tooltip_text("Edit")
         toolbar.add(button1)
 
         button2 = gtk.RadioToolButton(button1, None)
         button2.connect("toggled", lambda w: self.set_mode("tracing"))
+        button2.set_tooltip_text("Tracing")
         button2.set_icon_widget(icon_trace)
         toolbar.add(button2)
 
         button2 = gtk.RadioToolButton(button1, None)
         button2.connect("toggled", lambda w: self.set_mode("simrun"))
+        button2.set_tooltip_text("Simulation")
         button2.set_icon_widget(icon_simrun)
         toolbar.add(button2)
 
         button2 = gtk.RadioToolButton(button1, None)
         button2.connect("toggled", lambda w: self.set_mode("verif"))
+        button2.set_tooltip_text("Verification")
         button2.set_icon_widget(icon_verif)
         toolbar.add(button2)
         toolbar.add(gtk.SeparatorToolItem())
 
         self.button_undo = gtk.ToolButton()
         self.button_undo.connect("clicked", lambda w: self.undo())
+        self.button_undo.set_tooltip_text("Undo")
         self.button_undo.set_stock_id(gtk.STOCK_UNDO)
 
         self.button_redo = gtk.ToolButton()
         self.button_redo.connect("clicked", lambda w: self.redo())
+        self.button_redo.set_tooltip_text("Redo")
         self.button_redo.set_stock_id(gtk.STOCK_REDO)
 
         toolbar.add(self.button_undo)
         toolbar.add(self.button_redo)
         toolbar.add(gtk.SeparatorToolItem())
 
+        ag = gtk.AccelGroup()
+        self.app.window.add_accel_group(ag)
+
         button1 = gtk.RadioToolButton(None,None)
         button1.connect("toggled", lambda w: self.set_tool("selection"))
+        button1.set_tooltip_text("Selection")
         button1.set_icon_widget(icon_arrow)
         self.button_selection = button1
+        add_radio_shortcut(ag, button1, "s")
 
-        button2 = gtk.RadioToolButton(button1,None)
+        button2 = gtk.RadioToolButton(button1, None)
         button2.connect("toggled", lambda w: self.set_tool("transition"))
+        button2.set_tooltip_text("Transition")
         button2.set_icon_widget(icon_transition)
+        add_radio_shortcut(ag, button2, "t")
 
         button3 = gtk.RadioToolButton(button1,None)
         button3.connect("toggled", lambda w: self.set_tool("place"))
+        button3.set_tooltip_text("Place")
         button3.set_icon_widget(icon_place)
+        add_radio_shortcut(ag, button3, "p")
 
         button4 = gtk.RadioToolButton(button1,None)
         button4.connect("toggled", lambda w: self.set_tool("edge"))
+        button4.set_tooltip_text("Edge")
         button4.set_icon_widget(icon_arc)
+        add_radio_shortcut(ag, button4, "e")
 
         button5 = gtk.RadioToolButton(button1,None)
         button5.connect("toggled", lambda w: self.set_tool("area"))
+        button5.set_tooltip_text("Area")
         button5.set_icon_widget(icon_area)
+        add_radio_shortcut(ag, button5, "a")
 
         toolbar.add(button1)
-        toolbar.add(button2)
+        toolbar.add(self.button_transition)
         toolbar.add(button3)
         toolbar.add(button4)
         toolbar.add(button5)
@@ -265,10 +289,12 @@ class NetEditor(gtk.VBox):
 
         button1 = gtk.ToolButton()
         button1.connect("clicked", lambda w: self.canvas.zoom_in())
+        button1.set_tooltip_text("Zoom in")
         button1.set_stock_id(gtk.STOCK_ZOOM_IN)
 
         button2 = gtk.ToolButton()
         button2.connect("clicked", lambda w: self.canvas.zoom_out())
+        button2.set_tooltip_text("Zoom out")
         button2.set_stock_id(gtk.STOCK_ZOOM_OUT)
 
         toolbar.add(button1)
